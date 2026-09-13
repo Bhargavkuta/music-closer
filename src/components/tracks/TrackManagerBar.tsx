@@ -5,7 +5,8 @@ import {
   Radio, 
   Piano, 
   Guitar, 
-  Layers 
+  Layers,
+  Disc 
 } from 'lucide-react';
 import { useProjectStore } from '../../store/projectStore';
 import { useUIStore } from '../../store/uiStore';
@@ -34,6 +35,7 @@ export const TrackManagerBar: React.FC = () => {
     { type: 'bass', label: 'Electric Bass', icon: <Radio size={15} /> },
     { type: 'guitar', label: 'Acoustic Guitar', icon: <Guitar size={15} /> },
     { type: 'synth', label: 'Analog Synth', icon: <Layers size={15} /> },
+    { type: 'drums', label: 'Drum Kit', icon: <Disc size={15} /> },
   ];
 
   const handleSelectTrack = (trackId: string, inst: InstrumentType) => {

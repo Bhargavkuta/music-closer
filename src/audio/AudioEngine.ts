@@ -8,6 +8,7 @@ import { BassInstrument } from './instruments/BassInstrument';
 import { GuitarInstrument } from './instruments/GuitarInstrument';
 import { SynthInstrument } from './instruments/SynthInstrument';
 import { DrumEngine } from './instruments/DrumEngine';
+import { DrumsInstrument } from './instruments/DrumsInstrument';
 import { audioBufferToWav } from '../utils/audioExport';
 
 export interface TransportPosition {
@@ -64,6 +65,7 @@ class AudioEngineSingleton {
   private instruments: Map<InstrumentType, InstrumentInterface> = new Map();
   private trackInstruments: Map<string, InstrumentInterface> = new Map();
   private drumEngine: DrumEngine;
+  private activeLiveDrumPattern: Record<DrumSound, boolean[]> | null = null;
 
 
   // Metronome
@@ -79,6 +81,7 @@ class AudioEngineSingleton {
   private playbackParts: Tone.Part[] = [];
   private playbackEndEventId: number | null = null;
   private drumScheduleId: number | null = null;
+  private drumSequence: Tone.Sequence<number> | null = null;
   private arrangementEventIds: number[] = [];
   private visualNoteCallback: VisualNoteCallback | null = null;
   private drumStepCallback: DrumStepCallback | null = null;
@@ -154,9 +157,12 @@ class AudioEngineSingleton {
     // 5. Drums
     try {
       this.drumEngine = new DrumEngine(this.masterBus);
+      const drumsInst = new DrumsInstrument(this.drumEngine);
+      this.instruments.set('drums', drumsInst);
     } catch (err) {
       console.error('[AudioEngine] Failed to initialize Drum engine:', err);
       this.drumEngine = new DrumEngine(); // fallback without routing
+      this.instruments.set('drums', new DrumsInstrument(this.drumEngine));
     }
   }
 
@@ -321,6 +327,10 @@ class AudioEngineSingleton {
     });
   }
 
+  public updateLiveDrumPattern(pattern: Record<DrumSound, boolean[]>): void {
+    this.activeLiveDrumPattern = pattern;
+  }
+
   public setDrumVolume(vol: number): void {
     this.drumEngine.setVolume(vol);
   }
@@ -391,7 +401,7 @@ class AudioEngineSingleton {
   public scheduleAllTracksPlayback(
     tracks: TrackData[],
     drumPattern?: Record<DrumSound, boolean[]>,
-    onPlaybackEnd?: () => void
+    _onPlaybackEnd?: () => void
   ): void {
     this.clearPlaybackSchedule();
 
@@ -453,43 +463,46 @@ class AudioEngineSingleton {
     });
 
     // 2. Schedule Drum Sequencer Loop if drum pattern has active steps
+    this.activeLiveDrumPattern = drumPattern || null;
+    const bpm = Tone.getTransport().bpm.value || 120;
+    const oneBarSec = (4 * 60) / bpm;
+
     if (drumPattern) {
-      let currentStep = 0;
-      this.drumScheduleId = Tone.getTransport().scheduleRepeat((time) => {
-        const step = currentStep % 16;
+      this.drumSequence = new Tone.Sequence(
+        (time, step) => {
+          const currentPattern = this.activeLiveDrumPattern || drumPattern;
 
-        // Trigger active drum sounds for this sixteenth step
-        (Object.keys(drumPattern) as DrumSound[]).forEach((sound) => {
-          if (drumPattern[sound]?.[step]) {
-            this.drumEngine.triggerDrum(sound, time, 0.85);
+          // Trigger active drum sounds for this sixteenth step
+          (Object.keys(currentPattern) as DrumSound[]).forEach((sound) => {
+            if (currentPattern[sound]?.[step]) {
+              this.drumEngine.triggerDrum(sound, time, 0.9);
+            }
+          });
+
+          // Notify UI of active step for LED playhead
+          if (this.drumStepCallback) {
+            Tone.getDraw().schedule(() => {
+              this.drumStepCallback?.(step);
+            }, time);
           }
-        });
+        },
+        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+        '16n'
+      );
 
-        // Notify UI of active step for LED playhead
-        if (this.drumStepCallback) {
-          Tone.getDraw().schedule(() => {
-            this.drumStepCallback?.(step);
-          }, time);
-        }
+      this.drumSequence.loop = true;
+      this.drumSequence.start(0);
 
-        currentStep++;
-      }, '16n');
-
-      // If drum pattern has active notes, keep song length at least 1 bar (2s @ 120bpm)
-      const hasDrumNotes = Object.values(drumPattern).some(arr => arr.some(Boolean));
-      if (hasDrumNotes && overallMaxEnd < 2.0) {
-        overallMaxEnd = 2.0;
+      if (overallMaxEnd < oneBarSec) {
+        overallMaxEnd = oneBarSec;
       }
     }
 
-    // Schedule stop when playback finishes (if loop is disabled)
-    const finalEnd = overallMaxEnd + 0.3;
-    this.playbackEndEventId = Tone.getTransport().scheduleOnce(() => {
-      if (!Tone.getTransport().loop) {
-        this.stopTransport();
-        onPlaybackEnd?.();
-      }
-    }, finalEnd);
+    // In pattern mode (drum loop or pattern preview), loop continuously
+    const finalEnd = Math.max(overallMaxEnd, oneBarSec);
+    Tone.getTransport().loop = true;
+    Tone.getTransport().loopStart = 0;
+    Tone.getTransport().loopEnd = finalEnd;
   }
 
   /**
@@ -641,6 +654,13 @@ class AudioEngineSingleton {
       Tone.getTransport().clear(this.drumScheduleId);
       this.drumScheduleId = null;
     }
+
+    if (this.drumSequence) {
+      this.drumSequence.stop();
+      this.drumSequence.dispose();
+      this.drumSequence = null;
+    }
+    Tone.getTransport().loop = false;
   }
 
   // --- Transport Controls ---
@@ -667,6 +687,10 @@ class AudioEngineSingleton {
   public stopTransport(): void {
     Tone.getTransport().stop();
     Tone.getTransport().seconds = 0;
+    Tone.getTransport().loop = false;
+    if (this.drumSequence) {
+      this.drumSequence.stop();
+    }
     this.stopAllNotes();
     if (this.isRecording) {
       this.stopRecording();
@@ -884,6 +908,9 @@ class AudioEngineSingleton {
             break;
           case 'synth':
             inst = new SynthInstrument(node.eq);
+            break;
+          case 'drums':
+            inst = new DrumsInstrument(this.drumEngine);
             break;
           case 'piano':
           default:

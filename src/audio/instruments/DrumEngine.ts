@@ -8,8 +8,11 @@ export class DrumEngine {
   private kickSynth: Tone.MembraneSynth;
   private snareBody: Tone.MembraneSynth;
   private snareNoise: Tone.NoiseSynth;
-  private hihatClosed: Tone.MetalSynth;
-  private hihatOpen: Tone.MetalSynth;
+  private hihatClosedFilter: Tone.Filter;
+  private hihatClosed: Tone.NoiseSynth;
+  private hihatOpenFilter: Tone.Filter;
+  private hihatOpen: Tone.NoiseSynth;
+  private clapFilter: Tone.Filter;
   private clapNoise: Tone.NoiseSynth;
   private tomSynth: Tone.MembraneSynth;
 
@@ -23,74 +26,88 @@ export class DrumEngine {
       oscillator: { type: 'sine' },
       envelope: {
         attack: 0.001,
-        decay: 0.35,
+        decay: 0.38,
         sustain: 0,
         release: 0.2
       }
     });
+    this.kickSynth.volume.value = 2;
 
-    // 2. Snare: Dual Layer (Body + Noise snap)
+    // 2. Snare: Dual Layer (Resonant Body + Pink Noise snap)
     this.snareBody = new Tone.MembraneSynth({
       pitchDecay: 0.02,
-      octaves: 2,
+      octaves: 2.5,
       oscillator: { type: 'triangle' },
       envelope: {
         attack: 0.001,
-        decay: 0.15,
+        decay: 0.16,
         sustain: 0,
         release: 0.1
       }
     });
+    this.snareBody.volume.value = 0;
 
     this.snareNoise = new Tone.NoiseSynth({
       noise: { type: 'pink' },
       envelope: {
         attack: 0.001,
-        decay: 0.18,
+        decay: 0.2,
         sustain: 0
       }
     });
+    this.snareNoise.volume.value = 1;
 
-    // 3. Closed Hi-Hat: Short metallic click
-    this.hihatClosed = new Tone.MetalSynth({
+    // 3. Closed Hi-Hat: High-pass filtered noise snap (7.5kHz)
+    this.hihatClosedFilter = new Tone.Filter({
+      frequency: 7500,
+      type: 'highpass'
+    });
+    this.hihatClosed = new Tone.NoiseSynth({
+      noise: { type: 'white' },
       envelope: {
         attack: 0.001,
-        decay: 0.05,
-        release: 0.05
-      },
-      harmonicity: 5.1,
-      modulationIndex: 32,
-      resonance: 4000,
-      octaves: 1.5
+        decay: 0.045,
+        sustain: 0
+      }
     });
-    this.hihatClosed.frequency.value = 240;
-    this.hihatClosed.volume.value = -8;
+    this.hihatClosed.volume.value = 0;
+    this.hihatClosed.connect(this.hihatClosedFilter);
+    this.hihatClosedFilter.connect(this.outputNode);
 
-    // 4. Open Hi-Hat: Sizzling metallic ring
-    this.hihatOpen = new Tone.MetalSynth({
+    // 4. Open Hi-Hat: Sizzling metallic noise ring (5.5kHz)
+    this.hihatOpenFilter = new Tone.Filter({
+      frequency: 5500,
+      type: 'highpass'
+    });
+    this.hihatOpen = new Tone.NoiseSynth({
+      noise: { type: 'white' },
       envelope: {
         attack: 0.001,
-        decay: 0.35,
-        release: 0.2
-      },
-      harmonicity: 5.1,
-      modulationIndex: 32,
-      resonance: 4000,
-      octaves: 1.5
+        decay: 0.32,
+        sustain: 0
+      }
     });
-    this.hihatOpen.frequency.value = 240;
-    this.hihatOpen.volume.value = -8;
+    this.hihatOpen.volume.value = -1;
+    this.hihatOpen.connect(this.hihatOpenFilter);
+    this.hihatOpenFilter.connect(this.outputNode);
 
-    // 5. Clap: Filtered noise snap
+    // 5. Hand Clap: Bandpass filtered impulse burst (1.1kHz)
+    this.clapFilter = new Tone.Filter({
+      frequency: 1100,
+      type: 'bandpass',
+      Q: 1.4
+    });
     this.clapNoise = new Tone.NoiseSynth({
       noise: { type: 'white' },
       envelope: {
-        attack: 0.005,
-        decay: 0.14,
+        attack: 0.003,
+        decay: 0.16,
         sustain: 0
       }
     });
-    this.clapNoise.volume.value = -4;
+    this.clapNoise.volume.value = 2;
+    this.clapNoise.connect(this.clapFilter);
+    this.clapFilter.connect(this.outputNode);
 
     // 6. Tom: Resonant pitch-bent tom
     this.tomSynth = new Tone.MembraneSynth({
@@ -99,19 +116,17 @@ export class DrumEngine {
       oscillator: { type: 'sine' },
       envelope: {
         attack: 0.001,
-        decay: 0.3,
+        decay: 0.32,
         sustain: 0,
         release: 0.2
       }
     });
+    this.tomSynth.volume.value = 2;
 
-    // Route all drum voices to output volume node
+    // Route direct synths to output volume node
     this.kickSynth.connect(this.outputNode);
     this.snareBody.connect(this.outputNode);
     this.snareNoise.connect(this.outputNode);
-    this.hihatClosed.connect(this.outputNode);
-    this.hihatOpen.connect(this.outputNode);
-    this.clapNoise.connect(this.outputNode);
     this.tomSynth.connect(this.outputNode);
 
     if (masterBus) {
@@ -135,14 +150,14 @@ export class DrumEngine {
           this.kickSynth.triggerAttackRelease('C1', '8n', triggerTime, vel);
           break;
         case 'snare':
-          this.snareBody.triggerAttackRelease('G2', '16n', triggerTime, vel * 0.7);
+          this.snareBody.triggerAttackRelease('G2', '16n', triggerTime, vel * 0.8);
           this.snareNoise.triggerAttackRelease('16n', triggerTime, vel);
           break;
         case 'hihatClosed':
-          this.hihatClosed.triggerAttackRelease('32n', triggerTime, vel * 0.8);
+          this.hihatClosed.triggerAttackRelease('32n', triggerTime, vel * 0.9);
           break;
         case 'hihatOpen':
-          this.hihatOpen.triggerAttackRelease('8n', triggerTime, vel * 0.8);
+          this.hihatOpen.triggerAttackRelease('8n', triggerTime, vel * 0.9);
           break;
         case 'clap':
           this.clapNoise.triggerAttackRelease('16n', triggerTime, vel);
@@ -191,8 +206,11 @@ export class DrumEngine {
     this.snareBody.dispose();
     this.snareNoise.dispose();
     this.hihatClosed.dispose();
+    this.hihatClosedFilter.dispose();
     this.hihatOpen.dispose();
+    this.hihatOpenFilter.dispose();
     this.clapNoise.dispose();
+    this.clapFilter.dispose();
     this.tomSynth.dispose();
     this.outputNode.dispose();
   }

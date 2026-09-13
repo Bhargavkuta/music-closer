@@ -32,10 +32,27 @@ const DRUM_ROWS: DrumRowConfig[] = [
 export const DrumMachine: React.FC = () => {
   const { drumPattern, toggleDrumStep, clearDrumPattern, loadDrumPreset } = useProjectStore();
   const { currentDrumStep } = useUIStore();
-  const { isPlaying, play, pause } = useTransportStore();
+  const { isPlaying, play, pause, setPlaybackMode, playbackMode } = useTransportStore();
+
+  React.useEffect(() => {
+    if (playbackMode !== 'pattern') {
+      setPlaybackMode('pattern');
+    }
+  }, [playbackMode, setPlaybackMode]);
 
   const handleAudition = (sound: DrumSound) => {
     AudioEngine.triggerDrum(sound, undefined, 0.95);
+  };
+
+  const handleTogglePlayBeat = () => {
+    if (isPlaying) {
+      pause();
+    } else {
+      if (playbackMode !== 'pattern') {
+        setPlaybackMode('pattern');
+      }
+      play();
+    }
   };
 
   return (
@@ -65,7 +82,7 @@ export const DrumMachine: React.FC = () => {
           <Button
             size="sm"
             variant={isPlaying ? 'accent' : 'secondary'}
-            onClick={isPlaying ? pause : play}
+            onClick={handleTogglePlayBeat}
             className="h-8 gap-1.5 text-xs font-bold"
           >
             {isPlaying ? <Pause size={13} /> : <Play size={13} className="fill-current" />}

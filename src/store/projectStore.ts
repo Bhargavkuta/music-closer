@@ -1125,11 +1125,13 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       const current = state.drumPattern[sound] || new Array(16).fill(false);
       const updated = [...current];
       updated[stepIndex] = !updated[stepIndex];
+      const newPattern = {
+        ...state.drumPattern,
+        [sound]: updated
+      };
+      AudioEngine.updateLiveDrumPattern(newPattern);
       return {
-        drumPattern: {
-          ...state.drumPattern,
-          [sound]: updated
-        },
+        drumPattern: newPattern,
         isDirty: true
       };
     });
@@ -1144,39 +1146,38 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
       clap: new Array(16).fill(false),
       tom: new Array(16).fill(false),
     };
+    AudioEngine.updateLiveDrumPattern(empty);
     set({ drumPattern: empty, isDirty: true });
   },
 
   loadDrumPreset: (preset) => {
+    let newPattern = DEFAULT_DRUM_PATTERN;
     if (preset === 'four_on_floor') {
-      set({ drumPattern: DEFAULT_DRUM_PATTERN, isDirty: true });
+      newPattern = DEFAULT_DRUM_PATTERN;
     } else if (preset === 'hiphop') {
-      set({
-        drumPattern: {
-          kick:        [true,  false, false, false, false, false, true,  false, false, false, true,  false, false, false, false, false],
-          snare:       [false, false, false, false, true,  false, false, false, false, false, false, false, true,  false, false, false],
-          hihatClosed: [true,  false, true,  false, true,  false, true,  false, true,  false, true,  false, true,  false, true,  false],
-          hihatOpen:   [false, false, false, false, false, false, false, false, false, false, false, false, false, false, true,  false],
-          clap:        [false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false],
-          tom:         [false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, true],
-        },
-        isDirty: true
-      });
+      newPattern = {
+        kick:        [true,  false, false, false, false, false, true,  false, false, false, true,  false, false, false, false, false],
+        snare:       [false, false, false, false, true,  false, false, false, false, false, false, false, true,  false, false, false],
+        hihatClosed: [true,  false, true,  false, true,  false, true,  false, true,  false, true,  false, true,  false, true,  false],
+        hihatOpen:   [false, false, false, false, false, false, false, false, false, false, false, false, false, false, true,  false],
+        clap:        [false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false],
+        tom:         [false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, true],
+      };
     } else if (preset === 'trap') {
-      set({
-        drumPattern: {
-          kick:        [true,  false, false, false, false, false, false, false, false, false, true,  false, false, false, false, false],
-          snare:       [false, false, false, false, true,  false, false, false, false, false, false, false, true,  false, false, false],
-          hihatClosed: [true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true],
-          hihatOpen:   [false, false, false, true,  false, false, false, true,  false, false, false, true,  false, false, false, true],
-          clap:        [false, false, false, false, true,  false, false, false, false, false, false, false, true,  false, false, false],
-          tom:         [false, false, false, false, false, false, false, false, false, false, false, false, false, true,  true,  false],
-        },
-        isDirty: true
-      });
+      newPattern = {
+        kick:        [true,  false, false, false, false, false, false, false, false, false, true,  false, false, false, false, false],
+        snare:       [false, false, false, false, true,  false, false, false, false, false, false, false, true,  false, false, false],
+        hihatClosed: [true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true,  true],
+        hihatOpen:   [false, false, false, true,  false, false, false, true,  false, false, false, true,  false, false, false, true],
+        clap:        [false, false, false, false, true,  false, false, false, false, false, false, false, true,  false, false, false],
+        tom:         [false, false, false, false, false, false, false, false, false, false, false, false, false, true,  true,  false],
+      };
     } else {
       get().clearDrumPattern();
+      return;
     }
+    AudioEngine.updateLiveDrumPattern(newPattern);
+    set({ drumPattern: newPattern, isDirty: true });
   }
 }));
 
